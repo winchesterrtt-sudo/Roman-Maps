@@ -45,6 +45,20 @@
   #about .small { color: var(--muted); font-size: 12.5px; }
   #about a { color: var(--accent); }
 
+  /* Embed mode (index.html?embed=1, e.g. inside a Squarespace page): no title bar,
+     just a floating "About & credits" button over the map. */
+  html.embed header { position: absolute; top: 10px; right: 10px; z-index: 11;
+    background: none; border: 0; padding: 0; }
+  html.embed header h1, html.embed header .hint, html.embed header .spacer { display: none; }
+  html.embed button.link { background: rgba(36,34,30,.88); }
+  html.embed #about { top: 50px; right: 10px; max-height: calc(100% - 60px); }
+
+  /* "Use Ctrl + scroll to zoom" message, shown in embed mode when someone scrolls over the map */
+  #scrollHint { position: absolute; inset: 0; display: grid; place-items: center; z-index: 9;
+    background: rgba(0,0,0,.45); color: #fff; font-size: 18px; text-align: center; padding: 20px;
+    opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #scrollHint.show { opacity: 1; }
+
   @media (max-width: 640px) {
     header .hint { display: none; }
     header h1 span { display: none; }
@@ -59,7 +73,7 @@
   <button class="link" id="aboutBtn" aria-expanded="false" aria-controls="about">About &amp; credits</button>
 </header>
 
-<div id="viewer"><div id="loading">Loading map…</div></div>
+<div id="viewer"><div id="loading">Loading map…</div><div id="scrollHint"></div></div>
 
 <aside id="about" hidden>
   <h2>About this map</h2>
@@ -69,7 +83,7 @@
 
   <h3>Using the viewer</h3>
   <ul>
-    <li>Scroll the mouse wheel, pinch, or use the + and − buttons to zoom.</li>
+    <li id="zoomHelp">Scroll the mouse wheel, pinch, or use the + and − buttons to zoom.</li>
     <li>Drag to move around. The small overview map shows where you are.</li>
     <li>The house button resets the view; the corner button goes fullscreen.</li>
   </ul>
@@ -86,6 +100,11 @@
   <p class="small">Zoom viewer: <a href="https://openseadragon.github.io/" target="_blank" rel="noopener">OpenSeadragon</a> (BSD licence).</p>
 </aside>
 
+<script>
+  // Embed mode: add ?embed=1 to the address (used for the Squarespace iframe).
+  var EMBED = /[?&]embed=(1|true)\b/i.test(location.search);
+  if (EMBED) document.documentElement.classList.add("embed");
+</script>
 <script src="https://cdn.jsdelivr.net/npm/openseadragon@4.1.1/build/openseadragon/openseadragon.min.js"></script>
 <script>
   // Image size and tile layout written by scripts\web_tiles.py (see tiles/info.json).
@@ -117,6 +136,25 @@
     immediateRender: false,
     crossOriginPolicy: false
   });
+
+  // In embed mode a plain mouse-wheel scroll should scroll the Squarespace page, not zoom
+  // the map (otherwise visitors get stuck on the map). Ctrl/Cmd + scroll, trackpad pinch,
+  // the +/- buttons, double-click and touch pinch still zoom.
+  if (EMBED) {
+    var hint = document.getElementById("scrollHint"), hintTimer;
+    var key = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
+    hint.textContent = "Use " + key + " + scroll to zoom the map";
+    document.getElementById("zoomHelp").textContent =
+      "Hold " + key + " and scroll, pinch, double-click, or use the + and − buttons to zoom.";
+    viewer.addHandler("canvas-scroll", function (e) {
+      var ev = e.originalEvent;      if (ev.ctrlKey || ev.metaKey) return;          // zoom as normal (trackpad pinch sends ctrlKey)
+      e.preventDefaultAction = true;                 // don't zoom
+      e.preventDefault = false;                      // let the page behind scroll
+      hint.classList.add("show");
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(function () { hint.classList.remove("show"); }, 1200);
+    });
+  }
 
   viewer.addOnceHandler("tile-loaded", function () {
     var l = document.getElementById("loading");
